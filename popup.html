@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Visit URL Logger</title>
+  <style>
+    body { font: 12px/1.4 "Segoe UI", sans-serif; width: 360px; margin: 0; background: #f3f3f3; }
+    header { padding: 8px 10px; border-bottom: 1px solid #ccc; background: #fff; }
+    #list { max-height: 360px; overflow: auto; background: #fff; }
+    .row { padding: 6px 10px; border-bottom: 1px solid #eee; word-break: break-all; }
+    .meta { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    Recent logged URLs (canonical)
+    <div><a href="#" id="openExplorer">Open explorer (same IndexedDB)</a></div>
+    <label style="display:block;margin-top:6px;">
+      <input type="checkbox" id="commentsLogging" />
+      Permalink key logging: <span id="commentsLoggingLabel">off</span>
+    </label>
+    <label style="display:block;margin-top:4px;">
+      <input type="checkbox" id="logHash" />
+      Text hash logging: <span id="logHashLabel">off</span>
+    </label>
+    <label style="display:block;margin-top:4px;">
+      <input type="checkbox" id="showCommentsOverlay" />
+      Show realtime comments transparent window
+    </label>
+    <label style="display:block;margin-top:4px;">
+      <input type="checkbox" id="showHashOverlay" />
+      Show transparent window for 2nd tab
+    </label>
+    <div style="margin-top:8px;border-top:1px solid #ddd;padding-top:6px;">Same URL title policy</div>
+    <label style="display:block;"><input type="checkbox" id="titleIfNewHasAt" /> 1. Update if new title contains @</label>
+    <label style="display:block;"><input type="checkbox" id="titleIfOldLacksAt" /> 2. Update if old title has no @ and new title has @</label>
+    <label style="display:block;"><input type="checkbox" id="titleAddNewRecord" /> 3. Add as a new record instead of overwrite</label>
+    <div id="stats" style="margin-top:8px;color:#555;">IDB ~ ? · syncCache this session: ?</div>
+  </header>
+  <div id="list">Loading…</div>
+  <script src="db.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

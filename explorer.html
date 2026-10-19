@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log Explorer</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 13px/1.35 "Segoe UI", Tahoma, sans-serif;
+      background: #f0f0f0;
+      color: #222;
+      display: flex;
+      flex-direction: column;
+    }
+    .toolbar {
+      display: block;
+      padding: 6px 8px;
+      background: #f3f3f3;
+      border-bottom: 1px solid #c8c8c8;
+    }
+    .toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+    }
+    .toolbar-row + .toolbar-row { margin-top: 6px; }
+    .toolbar input[type="search"] {
+      flex: 1;
+      min-width: 160px;
+      height: 24px;
+      box-sizing: border-box;
+      border: 1px solid #adadad;
+      padding: 0 8px;
+    }
+    .toolbar select {
+      height: 24px;
+      max-width: 260px;
+      min-width: 170px;
+      border: 1px solid #adadad;
+      background: #fff;
+      font: inherit;
+    }
+    .toolbar button, .path {
+      height: 24px;
+      border: 1px solid #adadad;
+      background: #e1e1e1;
+      padding: 0 10px;
+      font: inherit;
+    }
+    .toolbar button:hover { background: #eee; }
+    .path {
+      display: flex;
+      align-items: center;
+      background: #fff;
+      min-width: 220px;
+      color: #444;
+    }
+    .split {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    .side {
+      width: 180px;
+      background: #fff;
+      border-right: 1px solid #c8c8c8;
+      padding: 8px 0;
+    }
+    .side div {
+      padding: 6px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .side div:hover { background: #e5f3ff; }
+    .side .on { background: #cce8ff; }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    thead th {
+      text-align: left;
+      font-weight: 600;
+      background: #f5f5f5;
+      border-bottom: 1px solid #d0d0d0;
+      padding: 5px 8px;
+      position: sticky;
+      top: 0;
+    }
+    tbody td {
+      padding: 4px 8px;
+      border-bottom: 1px solid #eee;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    tbody tr.sel { background: #cce8ff; }
+    tbody tr:hover { background: #e5f3ff; }
+    button.fold, button.selall { width: 18px; height: 18px; padding: 0; margin-right: 4px; vertical-align: middle; }
+    .cmt { margin: 4px 0 4px 22px; white-space: pre-wrap; cursor: pointer; }
+    .cmt.sel { background: #ffe08a; }
+    tr.row-sel { outline: 1px solid #e6a800; }
+    .cmt .uid { color: #555; font-family: Consolas, monospace; }
+    mark.search-hit { background: #00ff00; color: #000; padding: 0 1px; border-radius: 2px; }
+    #menu { position: fixed; z-index: 20; background: #fff; border: 1px solid #888; min-width: 160px; display: none; }
+    #menu button { display: block; width: 100%; text-align: left; border: 0; background: #fff; padding: 6px 10px; }
+    #menu button:hover { background: #e5f3ff; }
+    .listwrap { flex: 1; overflow: auto; min-height: 240px; }
+    .preview {
+      height: 160px;
+      border-top: 1px solid #c8c8c8;
+      background: #fafafa;
+      padding: 8px 10px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .status {
+      height: 22px;
+      border-top: 1px solid #c8c8c8;
+      background: #f3f3f3;
+      padding: 3px 8px;
+      color: #555;
+    }
+    .dlg {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.25);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .dlg.on { display: flex; }
+    .box {
+      width: 420px;
+      background: #fff;
+      border: 1px solid #666;
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
+      padding: 12px;
+    }
+    .box h3 { margin: 0 0 10px; font-size: 14px; }
+    .box label { display: block; margin: 8px 0 3px; }
+    .box input, .box textarea {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      border: 1px solid #adadad;
+      padding: 4px 6px;
+    }
+    .box textarea { height: 90px; }
+    .box .row { display: flex; gap: 8px; }
+    .box .row > div { flex: 1; }
+    .box .acts { margin-top: 10px; text-align: right; }
+    .empty { padding: 24px; color: #777; }
+
+    .tabs { display: flex; gap: 0; background: #e8e8e8; border-bottom: 1px solid #c8c8c8; }
+    .tabs label {
+      padding: 7px 16px;
+      cursor: pointer;
+      border-right: 1px solid #d0d0d0;
+      user-select: none;
+    }
+    .tabs input { display: none; }
+    #tab-permalink:checked ~ .tabs label[for="tab-permalink"],
+    #tab-hash:checked ~ .tabs label[for="tab-hash"] {
+      background: #fff;
+      font-weight: 600;
+      border-bottom: 2px solid #1a73e8;
+    }
+    .tab-panel { display: none; flex: 1; flex-direction: column; min-height: 0; }
+    #tab-permalink:checked ~ #panel-permalink,
+    #tab-hash:checked ~ #panel-hash { display: flex; }
+    .hash-bar { padding: 8px; background: #f3f3f3; border-bottom: 1px solid #c8c8c8; }
+    .hash-bar input[type="text"] { width: min(720px, 100%); height: 24px; border: 1px solid #adadad; padding: 0 8px; font: inherit; }
+    .hash-note { padding: 16px; color: #555; }
+  </style>
+</head>
+<body>
+  <input type="radio" name="explorer-tab" id="tab-permalink" checked />
+  <input type="radio" name="explorer-tab" id="tab-hash" />
+  <div class="tabs">
+    <label for="tab-permalink">1. Permalink key</label>
+    <label for="tab-hash">2. Text hash</label>
+  </div>
+  <div class="toolbar" id="shared-search-bar">
+    <div class="toolbar-row">
+      <span class="path">Shared search history</span>
+      <select id="recentSearches" aria-label="Recent search patterns" title="Shared by both tabs">
+        <option value="">Recent searches (0/40)</option>
+      </select>
+    </div>
+  </div>
+  <div class="tab-panel" id="panel-permalink">
+  <div class="toolbar">
+    <div class="toolbar-row toolbar-search-row">
+      <span class="path">extension:\visitCommentLog\records</span>
+      <input id="q" type="search" placeholder="Search date, title, url, comments..." />
+      <span id="seek" style="min-width:110px;color:#555;">Seek 0%</span>
+    </div>
+    <div class="toolbar-row toolbar-controls-row">
+      <label style="white-space:nowrap;"><input type="checkbox" id="searchInDateTime" /> in datetime</label>
+      <label style="white-space:nowrap;"><input type="checkbox" id="searchInUrl" checked /> in url</label>
+      <label style="white-space:nowrap;"><input type="checkbox" id="searchInTitle" checked /> in title</label>
+      <label style="white-space:nowrap;"><input type="checkbox" id="includeComments" /> Including comments: <span id="includeCommentsLabel">off</span></label>
+      <label style="white-space:nowrap;" title="When the URL or any comment field matches the search (including @uploaderID/author/channel ID), automatically unfold and show all comments for that video."><input type="checkbox" id="expandCommentsOnUrlHit" /> URL/comment hit: unfold all comments: <span id="expandCommentsOnUrlHitLabel">off</span></label>
+      <label style="white-space:nowrap;"><input type="checkbox" id="dedupeCommentId" /> Comment ID once (first row): <span id="dedupeCommentIdLabel">off</span></label>
+      <label style="white-space:nowrap;"><input type="checkbox" id="dedupeTitleDaily" /> Same title once each day: <span id="dedupeTitleDailyLabel">off</span></label>
+      <button id="reloadBtn">Refresh</button>
+      <button id="newBtn">New</button>
+      <button id="delBtn">Delete</button>
+      <button id="exportBtn">Export</button>
+      <button id="exportCommentsBtn">Export Comments</button>
+      <button id="importBtn">Import History</button>
+      <button id="importCommentsBtn">Import Comments</button>
+      <input id="fileInput" type="file" accept="application/json" hidden />
+    </div>
+  </div>
+  <div class="split">
+    <aside class="side">
+      <div class="on" data-filter="all">All records</div>
+      <div data-filter="yt">YouTube URLs</div>
+      <div data-filter="other">Other URLs</div>
+      <div data-filter="recycle">Recycle box</div>
+    </aside>
+    <div class="main">
+      <div class="listwrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px">Date</th>
+              <th style="width:70px">Time</th>
+              <th style="width:600px">Title</th>
+              <th>URL</th>
+              <th style="width:50px">ID</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div id="empty" class="empty" hidden>No items match.</div>
+      </div>
+      <div class="preview" id="preview">Select a row to preview comments.</div>
+    </div>
+  </div>
+  <div class="status" id="status">0 items</div>
+  </div>
+
+  <div class="tab-panel" id="panel-hash">
+    <div class="toolbar">
+      <div class="toolbar-row toolbar-search-row">
+        <span class="path">extension:\visitCommentLog\hashTexts</span>
+        <input id="qHash" type="search" placeholder="Search author, text, page id, hash..." />
+        <span id="seekHash" style="min-width:110px;color:#555;">Seek 0%</span>
+      </div>
+      <div class="toolbar-row toolbar-controls-row">
+        <label style="white-space:nowrap;">1. blocks <input id="hashBlocks" type="text" value="ytd-comment-view-model ytd-backstage-post-renderer" style="width:280px;height:24px;border:1px solid #adadad;padding:0 8px;" /></label>
+        <label style="white-space:nowrap;">2. author <input id="hashAuthor" type="text" value="#author-text" style="width:140px;height:24px;border:1px solid #adadad;padding:0 8px;" /></label>
+        <label style="white-space:nowrap;">3. text <input id="hashText" type="text" value="yt-attributed-string#content-text yt-formatted-string#content-text" style="width:360px;height:24px;border:1px solid #adadad;padding:0 8px;" /></label>
+        <label style="white-space:nowrap;"><input type="checkbox" id="searchInDateTimeHash" /> in datetime</label>
+        <label style="white-space:nowrap;"><input type="checkbox" id="searchInUrlHash" checked /> in url</label>
+        <label style="white-space:nowrap;"><input type="checkbox" id="searchInTitleHash" checked /> in title</label>
+        <button id="reloadHashBtn" type="button">Refresh</button>
+        <button id="delHashBtn" type="button">Delete</button>
+        <button id="exportHashBtn" type="button">Export</button>
+      </div>
+    </div>
+    <div class="split">
+      <aside class="side">
+        <div class="on" data-filter="all">All records</div>
+        <div data-filter="yt">YouTube URLs</div>
+        <div data-filter="other">Other URLs</div>
+        <div data-filter="recycle">Recycle box</div>
+      </aside>
+      <div class="main">
+        <div class="listwrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px">Date</th>
+                <th style="width:70px">Time</th>
+                <th style="width:600px">Title</th>
+                <th>URL</th>
+                <th style="width:50px">ID</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyHash"></tbody>
+          </table>
+          <div id="emptyHash" class="empty" hidden>No items match.</div>
+        </div>
+        <div class="preview" id="previewHash">Select a row to preview the hashed text.</div>
+      </div>
+    </div>
+    <div class="status" id="statusHash">0 items</div>
+  </div>
+
+  <div id="menu"></div>
+  <div id="hashMenu" style="position:fixed;z-index:30;background:#fff;border:1px solid #888;min-width:140px;display:none;">
+    <button id="hashMenuDelete" type="button" style="display:block;width:100%;text-align:left;border:0;background:#fff;padding:6px 10px;">Delete</button>
+    <button id="hashMenuRecover" type="button" style="display:block;width:100%;text-align:left;border:0;background:#fff;padding:6px 10px;">Recover</button>
+  </div>
+
+
+  <div class="dlg" id="dlg">
+    <div class="box">
+      <h3>New record</h3>
+      <div class="row">
+        <div>
+          <label>Date</label>
+          <input id="date" type="date" />
+        </div>
+        <div>
+          <label>Time</label>
+          <input id="time" type="time" />
+        </div>
+      </div>
+      <label>Visited URL</label>
+      <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=" />
+      <label>Seen YouTube user comment(s)</label>
+      <textarea id="comments"></textarea>
+      <div class="acts">
+        <button id="cancelBtn">Cancel</button>
+        <button id="saveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="db.js"></script>
+  <script src="db2.js"></script>
+  <script src="explorer.js"></script>
+</body>
+</html>

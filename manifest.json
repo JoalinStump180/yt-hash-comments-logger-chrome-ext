@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "AI comment logger 0.2",
+  "version": "0.3.0",
+  "description": "Background logger for visited URLs, titles, and optional YouTube comments.",
+  "permissions": ["webNavigation", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [     "<all_urls>"        ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [ "<all_urls>" ],
+      "js": ["content2.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [ "<all_urls>"   ],
+      "js": ["title-ping.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Visit URL Logger",
+    "default_popup": "popup.html"
+  }
+}
