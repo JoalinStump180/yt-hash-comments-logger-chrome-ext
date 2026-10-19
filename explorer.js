@@ -1124,6 +1124,10 @@ function videoIdFromStoredUrl2(url) {
     let hashFilter = "all";
     let openHashVideos = new Set();
     let hashMenuTarget = null;
+    let hashIncludeComments = false;
+    let hashExpandOnHit = false;
+    let hashDedupeFirstSeenId = false;
+    let hashDedupeTitleDaily = false;
 
     function pageIdOf(url) {
       return videoIdFromStoredUrl(url) || "";
@@ -1157,13 +1161,87 @@ function videoIdFromStoredUrl2(url) {
       return hashRows.find((r) => r.hashKey === key) || null;
     }
 
-    function hashItemHtml(key, pageId) {
-      const row = textFor(key);
-      const author = row ? row.author : key.split("|")[0];
+    function pageEntry(item) {
+      if (item && typeof item === "object") return { key: String(item.key || ""), firstSeen: item.firstSeen || 0 };
+      return { key: String(item || ""), firstSeen: 0 };
+    }
+
+    function seenStamp(ms) {
+      if (!ms) return "";
+      const d = new Date(ms);
+      const p = (n) => String(n).padStart(2, "0");
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    }
+
+    function greenHit(text, q) {
+      const raw = String(text || "");
+      if (!q) return esc(raw);
+      const i = raw.toLowerCase().indexOf(q);
+      if (i < 0) return esc(raw);
+      return esc(raw.slice(0, i)) + '<span style="color:#00ff00;font-weight:700">' + esc(raw.slice(i, i + q.length)) + "</span>" + esc(raw.slice(i + q.length));
+    }
+
+    function hashItemHtml(item, pageId, q) {
+      const entry = pageEntry(item);
+      const row = textFor(entry.key);
+      const author = row ? row.author : entry.key.split("|")[0];
       const text = row ? row.text : "";
-      return `<div class="hash-item" data-hash="${esc(key)}" data-page="${esc(pageId)}" style="padding:4px 0;border-top:1px solid #eee;">
-        <b>${esc(author)}</b> ${esc(text)}
+      const when = seenStamp(entry.firstSeen);
+      return `<div class="hash-item" data-hash="${esc(entry.key)}" data-page="${esc(pageId)}" style="padding:4px 0;border-top:1px solid #eee;">
+        ${when ? esc(when) + " " : ""}<b>${greenHit(author, q)}</b> ${greenHit(text, q)}
       </div>`;
+    }
+
+    function uniquePairs(items) {
+      const entries = items.map(pageEntry);
+      if (!hashDedupeFirstSeenId) return entries;
+      const seen = new Set();
+      return entries.filter((e) => {
+        const pair = e.firstSeen + "|" + e.key;
+        if (seen.has(pair)) return false;
+        seen.add(pair);
+        return true;
+      });
+    }
+
+    function newestTitlePerDay(list) {
+      if (!hashDedupeTitleDaily) return list;
+      const winner = new Map();
+      const value = (r) => {
+        const n = Date.parse(String(r.date || "") + "T" + String(r.time || "00:00"));
+        return Number.isFinite(n) ? n : -Infinity;
+      };
+      for (const r of list) {
+        const title = String(r.title || "").trim();
+        if (!title) continue;
+        const key = String(r.date || "") + "|" + title;
+        const cur = winner.get(key);
+        if (!cur || value(r) > value(cur)) winner.set(key, r);
+      }
+      const keep = new Set(winner.values());
+      return list.filter((r) => !String(r.title || "").trim() || keep.has(r));
+    }
+
+
+    function oneRowPerPage(list) {
+      const winner = new Map();
+      const realTitle = (r) => {
+        const t = String(r.title || "").trim();
+        return t && !/youtube|loading/i.test(t);
+      };
+      const better = (a, b) => {
+        const ar = realTitle(a), br = realTitle(b);
+        if (ar !== br) return ar;
+        return (a.createdAt || 0) > (b.createdAt || 0);
+      };
+      const rest = [];
+      for (const r of list) {
+        const id = pageIdOf(r.url);
+        if (!id) { rest.push(r); continue; }
+        const cur = winner.get(id);
+        if (!cur || better(r, cur)) winner.set(id, r);
+      }
+      return rest.concat([...winner.values()]);
     }
 
     function paintHash() {
@@ -1179,25 +1257,41 @@ function videoIdFromStoredUrl2(url) {
         $("statusHash").textContent = shown.length + " recycled";
         return;
       }
-      const list = rows.filter((r) => {
+      let list = rows.filter((r) => {
         const url = String(r.url || "");
         if (hashFilter === "yt") return /youtube\.com|youtu\.be/i.test(url);
         if (hashFilter === "other") return !/youtube\.com|youtu\.be/i.test(url);
         return true;
-      }).filter((r) => !q || [r.title, r.url, r.date].join(" ").toLowerCase().includes(q) || (hashPages.get(pageIdOf(r.url)) || []).some((k) => {
-        const row = textFor(k);
-        return (row && (row.author + " " + row.text).toLowerCase().includes(q)) || k.toLowerCase().includes(q);
-      }));
+      });
+      list = newestTitlePerDay(list);
+      list = oneRowPerPage(list);
+      list = list.filter((r) => {
+        if (!q) return true;
+        const urlHit = [r.title, r.url, r.date].join(" ").toLowerCase().includes(q);
+        if (urlHit) return true;
+        if (!hashIncludeComments) return false;
+        return (hashPages.get(pageIdOf(r.url)) || []).some((k) => {
+          const entry = pageEntry(k);
+          const row = textFor(entry.key);
+          return (row && (row.author + " " + row.text).toLowerCase().includes(q)) || entry.key.toLowerCase().includes(q);
+        });
+      });
       tb.innerHTML = list.map((r) => {
         const vid = pageIdOf(r.url);
         const keys = hashPages.get(vid) || [];
-        const show = vid && openHashVideos.has(vid);
-        const fold = vid && keys.length ? `<button class="fold hash-fold" data-vid="${esc(vid)}" type="button">${show ? "–" : "+"}</button>` : "";
-        const detail = show ? `<tr class="cmt-row"><td colspan="5">${keys.map((k) => hashItemHtml(k, vid)).join("")}</td></tr>` : "";
+        const entries = uniquePairs(keys);
+        const urlHit = !!q && [r.title, r.url, r.date].join(" ").toLowerCase().includes(q);
+        const innerHit = hashIncludeComments && entries.some((e) => {
+          const row = textFor(e.key);
+          return (row && (row.author + " " + row.text).toLowerCase().includes(q)) || e.key.toLowerCase().includes(q);
+        });
+        const show = vid && (openHashVideos.has(vid) || (hashExpandOnHit && (urlHit || innerHit)));
+        const fold = vid && entries.length ? `<button class="fold hash-fold" data-vid="${esc(vid)}" type="button">${show ? "–" : "+"}</button>` : "";
+        const detail = show ? `<tr class="cmt-row"><td colspan="5">${entries.map((e) => hashItemHtml(e, vid, q)).join("")}</td></tr>` : "";
         return `<tr data-id="${r.id}">
           <td>${esc(r.date)}</td><td>${esc(r.time)}</td>
-          <td>${fold}${esc(r.title || "")}</td>
-          <td>${esc(r.url || "")}</td>
+          <td>${fold}${greenHit(r.title || "", q)}</td>
+          <td>${greenHit(r.url || "", q)}</td>
           <td>${r.id}</td>
         </tr>${detail}`;
       }).join("");
@@ -1254,5 +1348,51 @@ function videoIdFromStoredUrl2(url) {
       await recoverHashItem(key, true);
       await loadHashData();
     });
+
+    chrome.storage.local.get({ lastExplorerTab: "permalink" }).then((bag) => {
+      if (bag.lastExplorerTab === "hash") {
+        const radio = document.getElementById("tab-hash");
+        if (radio) radio.checked = true;
+      }
+    });
+    document.getElementById("tab-permalink")?.addEventListener("change", () => {
+      if (document.getElementById("tab-permalink").checked) chrome.storage.local.set({ lastExplorerTab: "permalink" });
+    });
+    document.getElementById("tab-hash")?.addEventListener("change", () => {
+      if (document.getElementById("tab-hash").checked) chrome.storage.local.set({ lastExplorerTab: "hash" });
+    });
+
+    const HASH_FLAGS = ["hashIncludeComments", "hashExpandOnHit", "hashDedupeFirstSeenId", "hashDedupeTitleDaily"];
+    chrome.storage.local.get({
+      hashIncludeComments: false,
+      hashExpandOnHit: false,
+      hashDedupeFirstSeenId: false,
+      hashDedupeTitleDaily: false
+    }).then((bag) => {
+      hashIncludeComments = !!bag.hashIncludeComments;
+      hashExpandOnHit = !!bag.hashExpandOnHit;
+      hashDedupeFirstSeenId = !!bag.hashDedupeFirstSeenId;
+      hashDedupeTitleDaily = !!bag.hashDedupeTitleDaily;
+      for (const key of HASH_FLAGS) {
+        const box = $(key);
+        const label = $(key + "Label");
+        if (box) box.checked = !!bag[key];
+        if (label) label.textContent = bag[key] ? "on" : "off";
+      }
+      paintHash();
+    });
+    for (const key of HASH_FLAGS) {
+      $(key)?.addEventListener("change", () => {
+        const on = $(key).checked;
+        if (key === "hashIncludeComments") hashIncludeComments = on;
+        if (key === "hashExpandOnHit") hashExpandOnHit = on;
+        if (key === "hashDedupeFirstSeenId") hashDedupeFirstSeenId = on;
+        if (key === "hashDedupeTitleDaily") hashDedupeTitleDaily = on;
+        chrome.storage.local.set({ [key]: on });
+        const label = $(key + "Label");
+        if (label) label.textContent = on ? "on" : "off";
+        paintHash();
+      });
+    }
 
     loadHashData();

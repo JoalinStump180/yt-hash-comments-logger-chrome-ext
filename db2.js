@@ -23,6 +23,11 @@ function textHash(s) {
   return (h >>> 0).toString(16);
 }
 
+
+function pageEntry(item) {
+  if (item && typeof item === "object") return { key: String(item.key || ""), firstSeen: item.firstSeen || 0 };
+  return { key: String(item || ""), firstSeen: 0 };
+}
 function hashKeyOf(author, payload) {
   return String(author || "") + "|" + textHash(payload);
 }
@@ -55,7 +60,8 @@ async function addHashOnce(row) {
       const pageReq = pages.get(pageId);
       pageReq.onsuccess = () => {
         const cur = pageReq.result || { pageId, hashes: [] };
-        if (!cur.hashes.includes(hashKey)) cur.hashes.push(hashKey);
+        const has = (cur.hashes || []).some((h) => pageEntry(h).key === hashKey);
+        if (!has) cur.hashes.push({ key: hashKey, firstSeen: Date.now() });
         pages.put(cur);
       };
     };
@@ -82,7 +88,7 @@ async function deleteHash(hashKey) {
       pageReq.onsuccess = () => {
         const cur = pageReq.result;
         if (!cur) return;
-        cur.hashes = (cur.hashes || []).filter((h) => h !== hashKey);
+        cur.hashes = (cur.hashes || []).filter((h) => pageEntry(h).key !== hashKey);
         pages.put(cur);
       };
     };
@@ -115,7 +121,7 @@ async function recycleHashItem(pageId, hashKey) {
       pageReq.onsuccess = () => {
         const cur = pageReq.result;
         if (!cur) return;
-        cur.hashes = (cur.hashes || []).filter((h) => h !== hashKey);
+        cur.hashes = (cur.hashes || []).filter((h) => pageEntry(h).key !== hashKey);
         pages.put(cur);
       };
     };
@@ -153,7 +159,8 @@ async function recoverHashItem(recycleKey, overwrite) {
         const pageReq = pages.get(rec.pageId);
         pageReq.onsuccess = () => {
           const cur = pageReq.result || { pageId: rec.pageId, hashes: [] };
-          if (!cur.hashes.includes(rec.originalKey)) cur.hashes.push(rec.originalKey);
+          const has = (cur.hashes || []).some((h) => pageEntry(h).key === rec.originalKey);
+          if (!has) cur.hashes.push({ key: rec.originalKey, firstSeen: Date.now() });
           pages.put(cur);
         };
         bin.delete(recycleKey);

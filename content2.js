@@ -302,14 +302,6 @@
       const textSels = String(live.querySelector(".vul-hash-text").value || bag.hashText || "").split(/\s+/).filter(Boolean);
       const batch = collectHashBlocks(selectors, authorSel, textSels);
       if (!batch.length) return;
-      if (!bag.logHash) {
-        for (const row of batch) {
-          if (shown.has(row.hashKey)) continue;
-          shown.add(row.hashKey);
-          roll({ ...row, isNew: true, createdAt: Date.now(), title: document.title, url: location.href });
-        }
-        return;
-      }
       chrome.runtime.sendMessage({ type: "yt-hash", batch }, (res) => {
         if (chrome.runtime.lastError || !res || !res.results) return;
         for (const item of res.results) {
