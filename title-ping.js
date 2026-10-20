@@ -1,12 +1,18 @@
+let lastUrl = "";
+let lastTitle = "";
+
 let lastSent = "lastsent";
 function pingTitle() {
   const title = String(document.title || "").trim();
   const url = String(location.href || "");
   if (!url || !title) return;
-  const sig = url + "\n" + title;
-  if (sig === lastSent) return;
-  lastSent = sig;
-  
+  //const sig = url + "\n" + title;
+  //if (sig === lastSent) return;
+  //lastSent = sig;
+  if (url !== lastUrl && title === lastTitle) return;
+  if (url === lastUrl && title === lastTitle) return;
+  lastUrl = url;
+  lastTitle = title;
 
   
   //chrome.runtime.sendMessage({ type: "page-title",  url:`${url}suffixnospace`, title }).catch(() => {});

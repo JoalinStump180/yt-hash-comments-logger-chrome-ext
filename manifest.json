@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AI comment logger 0.2",
+  "name": "AI comment logger 0.2 grok 20261019 stable",
   "version": "0.3.0",
   "description": "Background logger for visited URLs, titles, and optional YouTube comments.",
   "permissions": ["webNavigation", "storage", "tabs"],

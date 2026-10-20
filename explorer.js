@@ -1128,6 +1128,7 @@ function videoIdFromStoredUrl2(url) {
     let hashExpandOnHit = false;
     let hashDedupeFirstSeenId = false;
     let hashDedupeTitleDaily = false;
+    let hashIncludeSubstringUrls = false;
 
     function pageIdOf(url) {
       return videoIdFromStoredUrl(url) || "";
@@ -1192,16 +1193,17 @@ function videoIdFromStoredUrl2(url) {
       </div>`;
     }
 
-    function uniquePairs(items) {
-      const entries = items.map(pageEntry);
-      if (!hashDedupeFirstSeenId) return entries;
-      const seen = new Set();
-      return entries.filter((e) => {
-        const pair = e.firstSeen + "|" + e.key;
-        if (seen.has(pair)) return false;
-        seen.add(pair);
-        return true;
-      });
+    function firstRowByKey(list) {
+      const map = new Map();
+      if (!hashDedupeFirstSeenId) return map;
+      for (const r of list) {
+        const vid = pageIdOf(r.url);
+        for (const item of hashPages.get(vid) || []) {
+          const key = pageEntry(item).key;
+          if (key && !map.has(key)) map.set(key, r.id);
+        }
+      }
+      return map;
     }
 
     function newestTitlePerDay(list) {
@@ -1276,10 +1278,23 @@ function videoIdFromStoredUrl2(url) {
           return (row && (row.author + " " + row.text).toLowerCase().includes(q)) || entry.key.toLowerCase().includes(q);
         });
       });
+      if (q && hashIncludeSubstringUrls) {
+        const hitUrls = list.map((r) => String(r.url || ""));
+        const have = new Set(list.map((r) => r.id));
+        const extra = rows.filter((r) => {
+          if (have.has(r.id)) return false;
+          const url = String(r.url || "");
+          const id = pageIdOf(url);
+          if (!id) return false;
+          return hitUrls.some((u) => (url && u.includes(url)) || (id && id.length >= 6 && u.includes(id)));
+        });
+        list = list.concat(extra);
+      }
+      const firstRow = firstRowByKey(list);
       tb.innerHTML = list.map((r) => {
         const vid = pageIdOf(r.url);
         const keys = hashPages.get(vid) || [];
-        const entries = uniquePairs(keys);
+        const entries = keys.map(pageEntry).filter((e) => !hashDedupeFirstSeenId || firstRow.get(e.key) === r.id);
         const urlHit = !!q && [r.title, r.url, r.date].join(" ").toLowerCase().includes(q);
         const innerHit = hashIncludeComments && entries.some((e) => {
           const row = textFor(e.key);
@@ -1310,12 +1325,30 @@ function videoIdFromStoredUrl2(url) {
       paintHash();
     });
     $("tbodyHash")?.addEventListener("click", (e) => {
+      const q = ($("qHash")?.value || "").trim().toLowerCase();
+      const preview = $("previewHash");
       const fold = e.target.closest(".hash-fold");
-      if (!fold) return;
-      const vid = fold.dataset.vid;
-      if (openHashVideos.has(vid)) openHashVideos.delete(vid);
-      else openHashVideos.add(vid);
-      paintHash();
+      if (fold) {
+        const vid = fold.dataset.vid;
+        if (openHashVideos.has(vid)) openHashVideos.delete(vid);
+        else openHashVideos.add(vid);
+        paintHash();
+        return;
+      }
+      const item = e.target.closest(".hash-item");
+      if (item && preview) {
+        const row = textFor(item.dataset.hash);
+        const author = row ? row.author : "";
+        const text = row ? row.text : "";
+        preview.innerHTML = greenHit(author, q) + "<br>" + greenHit(text, q);
+        return;
+      }
+      const tr = e.target.closest("tr[data-id]");
+      if (tr && preview) {
+        const rec = rows.find((r) => String(r.id) === tr.dataset.id);
+        if (!rec) return;
+        preview.innerHTML = greenHit(rec.title || "", q) + "<br>" + greenHit(rec.url || "", q) + "<br>" + esc(rec.date || "") + " " + esc(rec.time || "");
+      }
     });
     $("tbodyHash")?.addEventListener("contextmenu", (e) => {
       const item = e.target.closest(".hash-item, .hash-recycle");
@@ -1362,17 +1395,19 @@ function videoIdFromStoredUrl2(url) {
       if (document.getElementById("tab-hash").checked) chrome.storage.local.set({ lastExplorerTab: "hash" });
     });
 
-    const HASH_FLAGS = ["hashIncludeComments", "hashExpandOnHit", "hashDedupeFirstSeenId", "hashDedupeTitleDaily"];
+    const HASH_FLAGS = ["hashIncludeComments", "hashExpandOnHit", "hashDedupeFirstSeenId", "hashDedupeTitleDaily", "hashIncludeSubstringUrls"];
     chrome.storage.local.get({
       hashIncludeComments: false,
       hashExpandOnHit: false,
       hashDedupeFirstSeenId: false,
-      hashDedupeTitleDaily: false
+      hashDedupeTitleDaily: false,
+      hashIncludeSubstringUrls: false
     }).then((bag) => {
       hashIncludeComments = !!bag.hashIncludeComments;
       hashExpandOnHit = !!bag.hashExpandOnHit;
       hashDedupeFirstSeenId = !!bag.hashDedupeFirstSeenId;
       hashDedupeTitleDaily = !!bag.hashDedupeTitleDaily;
+      hashIncludeSubstringUrls = !!bag.hashIncludeSubstringUrls;
       for (const key of HASH_FLAGS) {
         const box = $(key);
         const label = $(key + "Label");
@@ -1388,6 +1423,7 @@ function videoIdFromStoredUrl2(url) {
         if (key === "hashExpandOnHit") hashExpandOnHit = on;
         if (key === "hashDedupeFirstSeenId") hashDedupeFirstSeenId = on;
         if (key === "hashDedupeTitleDaily") hashDedupeTitleDaily = on;
+        if (key === "hashIncludeSubstringUrls") hashIncludeSubstringUrls = on;
         chrome.storage.local.set({ [key]: on });
         const label = $(key + "Label");
         if (label) label.textContent = on ? "on" : "off";
